@@ -22,6 +22,9 @@ Usage: mon-put-instance-data.pl [options]
 
 Description of available options:
 
+  --files-util        Reports file handle utilization.
+  --files-used        Reports total open file handles.
+  --files-avail       Reports total available file handles.
   --mem-util          Reports memory utilization in percentages.
   --mem-used          Reports memory used in megabytes.
   --mem-avail         Reports available memory in megabytes.
@@ -107,6 +110,9 @@ my $version = '1.2.1';
 my $client_name = 'CloudWatch-PutInstanceData';
 
 my $mcount = 0;
+my $report_files_util;
+my $report_files_used;
+my $report_files_avail;
 my $report_mem_util;
 my $report_mem_used;
 my $report_mem_avail;
@@ -144,6 +150,9 @@ my $argv_size = @ARGV;
   $parse_result = GetOptions(
     'help|?' => \$show_help,
     'version' => \$show_version,
+    'files-util' => \$report_files_util,
+    'files-used' => \$report_files_used,
+    'files-avail' => \$report_files_avail,
     'mem-util' => \$report_mem_util,
     'mem-used' => \$report_mem_used,
     'mem-avail' => \$report_mem_avail,
@@ -329,7 +338,8 @@ if (!$report_disk_space && ($report_disk_util || $report_disk_used || $report_di
 
 # check that there is a need to monitor at least something
 if (!$report_mem_util && !$report_mem_used && !$report_mem_avail
-  && !$report_swap_util && !$report_swap_used && !$report_disk_space)
+  && !$report_swap_util && !$report_swap_used && !$report_disk_space
+  && !$report_files_util && !$report_files_used && !$report_files_avail)
 {
   exit_with_error("No metrics specified for collection and submission to CloudWatch.");
 }
@@ -493,6 +503,25 @@ sub add_metric
 # avoid a storm of calls at the beginning of a minute
 if ($from_cron) {
   sleep(rand(20));
+}
+
+# collect file handle metrics
+
+if ($report_files_util || $report_files_used || $report_files_avail)
+{
+    my @fields = split(' ', `cat /proc/sys/fs/file-nr`);
+    my $files_used = $fields[0];
+    my $files_avail = $fields[2];
+    if ($report_files_used) {
+        add_metric('FileHandlesUsed', 'Count', $files_used);
+    }
+    if ($report_files_avail) {
+        add_metric('FileHandlesAvailable', 'Count', $files_avail);
+    }
+    if ($report_files_util) {
+        my $files_util = $files_used / $files_avail;
+        add_metric('FileHandlesUtilization', 'Percent', $files_util);
+    }
 }
 
 # collect memory and swap metrics
